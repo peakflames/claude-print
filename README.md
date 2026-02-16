@@ -1,5 +1,7 @@
 # claude-print
 
+![Claude Print](claude-print-preview.gif)
+
 A cross-platform CLI wrapper for Claude CLI that provides real-time progress feedback during headless execution.
 
 ## Features
