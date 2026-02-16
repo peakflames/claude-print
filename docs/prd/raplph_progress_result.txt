@@ -1,0 +1,187 @@
+## Codebase Patterns
+- Package comments should explain the purpose of types and functions
+- Use JSON struct tags with camelCase field names for serialization
+- Use `omitempty` for optional fields in JSON structs
+- Error messages should be clear and actionable
+- For platform-specific code, use build constraints (`//go:build windows` or `//go:build !windows`) in separate files
+
+---
+
+## 2026-02-16 - US-007
+- What was implemented: Created events/types.go with comprehensive Go structs for all Claude streaming JSON event types
+- Files changed: events/types.go (new file)
+- **Learnings for future iterations:**
+  - Claude streaming JSON uses nested structures: StreamEvent contains a MessageEvent which contains ContentBlock arrays
+  - There are multiple content block types (text, tool_use, tool_result) that can be represented as a single ContentBlock struct with optional fields or separate typed structs
+  - The ResultEvent at the end of a session contains detailed usage statistics including per-model breakdowns (ModelUsage map)
+  - Tool result events have an is_error field that should be checked for error handling
+---
+
+## 2026-02-16 - US-008
+- What was implemented: Created events/parser.go with ParseEvent() function that parses JSON strings into typed events
+- Files changed: events/parser.go (new file)
+- **Learnings for future iterations:**
+  - The parser uses a two-phase approach: first unmarshal to BaseEvent to get the type, then unmarshal again to the specific struct
+  - All event types implement an Event interface with EventType() method for polymorphism
+  - Unknown event types are returned as BaseEvent to allow graceful handling of new/unsupported event types
+  - Helper functions like IsContentBlockDelta(), IsMessageStart() make it easier to check stream event subtypes
+  - The StreamEvent.Event.Type field contains the nested event type (message_start, content_block_delta, etc.)
+---
+
+## 2026-02-16 - US-009
+- What was implemented: Created runner/runner.go with RunClaude() function that spawns Claude CLI and captures streaming stdout
+- Files changed: runner/runner.go (new file)
+- **Learnings for future iterations:**
+  - ClaudeProcess struct wraps exec.Cmd along with stdout pipe for clean resource management
+  - The command flags `--dangerously-skip-permissions --include-partial-messages --output-format=stream-json` are required for headless streaming
+  - Use cmd.StdoutPipe() before cmd.Start() to set up the pipe, then read from it after Start()
+  - Environment variables are inherited via cmd.Env = os.Environ()
+  - Helper methods Wait(), ExitCode(), and Kill() provide clean process lifecycle management
+---
+
+## 2026-02-16 - US-010
+- What was implemented: Created runner/stream.go with StreamEvents() function that reads stdout line-by-line and emits parsed events through a channel
+- Files changed: runner/stream.go (new file)
+- **Learnings for future iterations:**
+  - StreamEvents() uses a goroutine to read lines and send events through a channel for real-time consumption
+  - bufio.Scanner with increased buffer size (1MB) handles large JSON lines that Claude may emit
+  - Empty lines are skipped, and malformed JSON is logged but doesn't stop the stream
+  - The channel is closed when EOF is reached, allowing consumers to detect stream completion with range loop
+  - StreamEventsFromProcess() is a convenience wrapper that accepts ClaudeProcess directly
+---
+
+## 2026-02-16 - US-011
+- What was implemented: Created output/formatter.go with Formatter struct for colored and emoji-enhanced output
+- Files changed: output/formatter.go (new file)
+- **Learnings for future iterations:**
+  - ANSI escape codes: blue=\033[34m, green=\033[32m, red=\033[31m, yellow=\033[33m, reset=\033[0m
+  - Formatter struct has ColorEnabled and EmojiEnabled fields for runtime control
+  - Methods Info(), Success(), Error(), Warning() map to blue, green, red, yellow respectively
+  - Additional *WithEmoji() variants accept an emoji parameter for prefixing messages
+  - Plain() and PlainNoNewline() methods for uncolored output
+  - colorize() helper method wraps text in ANSI codes only when ColorEnabled=true
+---
+
+## 2026-02-16 - US-012
+- What was implemented: Created output/display.go with Display struct for real-time event display with configurable verbosity
+- Files changed: output/display.go (new file)
+- **Learnings for future iterations:**
+  - Display struct wraps Formatter and adds Verbosity level (Quiet/Normal/Verbose)
+  - HandleEvent() is the main entry point that routes to verbosity-specific handlers
+  - Tool use events come from StreamEvent.Event.ContentBlock (for content_block_start) or AssistantMessageEvent.Message.Content
+  - Text deltas use PlainNoNewline() to stream text without adding extra newlines
+  - getToolEmoji() and formatToolDescription() map tool names to emoji and human-readable descriptions
+  - Placeholder handlers for Quiet and Verbose modes allow incremental implementation (US-013, US-014)
+---
+
+## 2026-02-16 - US-013
+- What was implemented: Extended output/display.go with comprehensive verbose mode handling
+- Files changed: output/display.go (extended)
+- **Learnings for future iterations:**
+  - Verbose mode adds ~200 lines of code for detailed output including session metadata, full tool parameters, and tool results
+  - handleVerboseEvent() routes to type-specific handlers: handleVerboseStreamEvent, handleVerboseAssistantMessage, handleVerboseSystemEvent
+  - System events like system.init contain session metadata (session_id, model, cwd, tools, mcp_servers) - displayed only in verbose mode
+  - message_delta events contain token usage that should be displayed in verbose mode via showTokenUsage()
+  - Tool results with long content should be truncated (showing first 10 + last 5 lines for >20 lines)
+  - formatParameterValue() handles different value types and truncates long strings (>200 chars) or multi-line content (>5 lines)
+  - truncateLine() helper function for consistent line truncation across the display
+---
+
+## 2026-02-16 - US-014
+- What was implemented: Extended output/display.go with quiet mode handling for minimal script-friendly output
+- Files changed: output/display.go (extended)
+- **Learnings for future iterations:**
+  - Quiet mode follows the same handler pattern as Normal/Verbose: handleQuietEvent() routes to handleQuietStreamEvent()
+  - Quiet mode still streams text deltas (content_block_delta) to preserve Claude's final response - this is key for script output
+  - Only tool errors (is_error=true) are shown in quiet mode; all other tool events are suppressed
+  - showQuietCompletion() checks ResultEvent.IsError to distinguish success from error sessions
+  - message_stop events still need to print a newline to properly terminate streamed text output
+---
+
+## 2026-02-16 - US-015
+- What was implemented: Created output/errors.go with comprehensive error detection and formatting, and updated runner/runner.go to capture stderr
+- Files changed: output/errors.go (new file), runner/runner.go (extended)
+- **Learnings for future iterations:**
+  - Error handling is centralized in output/errors.go with ErrorContext struct to hold error state
+  - DetectToolError(), DetectResultError(), and DetectExitCodeError() provide typed error detection for different error sources
+  - Exit codes > 128 indicate signal termination (128 + signal number), mapped to user-friendly messages
+  - Common error patterns (permission denied, file not found, timeout, etc.) are mapped via MapCommonError() for better UX
+  - runner/runner.go now captures stderr via bytes.Buffer assigned to cmd.Stderr, with Stderr() method to retrieve content after process completion
+  - DisplayError() uses Formatter to output errors with red coloring and emoji prefix
+  - truncateErrorMessage() ensures error output doesn't overwhelm the terminal (max 500 chars)
+---
+
+## 2026-02-16 - US-016
+- What was implemented: Extended output/display.go with result summary display showing cost, duration, and token usage
+- Files changed: output/display.go (extended)
+- **Learnings for future iterations:**
+  - ResultEvent contains TotalCostUSD, DurationMS, DurationAPIMS, NumTurns, and ModelUsage for session summary
+  - showResultSummary() accepts a `verbose` parameter to switch between normal and verbose output
+  - formatDuration() converts milliseconds to human-readable format (Xms, X.Xs, XmY.Ys)
+  - formatCost() formats USD with 2 decimal places, or 4 for costs < $0.01
+  - Quiet mode also benefits from showing the summary line - better user experience than just "Done"
+  - Verbose mode shows additional details: aggregated token usage, per-model breakdowns, and tool usage counts
+  - All three verbosity levels (quiet, normal, verbose) now show the same base summary format for consistency
+---
+
+## 2026-02-16 - US-017
+- What was implemented: Created output/tty.go with IsTTY() and ShouldEnableColor() functions for automatic color detection
+- Files changed: output/tty.go (new file)
+- **Learnings for future iterations:**
+  - TTY detection uses os.File.Stat() and checks for os.ModeCharDevice flag
+  - IsTTY() is a general function that works with any os.File, IsStdoutTTY() is a convenience wrapper for stdout
+  - ShouldEnableColor() centralizes the color decision logic with clear priority: explicit flag > TTY detection > config setting
+  - When output is piped (not a TTY), colors should be disabled by default to avoid ANSI codes in piped output
+  - This function will be used in main.go (US-018) to determine the final ColorEnabled value
+---
+
+## 2026-02-16 - US-018
+- What was implemented: Wired up main.go to orchestrate all components - config loading, CLI parsing, path detection, process spawning, and event streaming
+- Files changed: main.go (extended from stub to full implementation)
+- **Learnings for future iterations:**
+  - The run() function returns an int exit code, called from main() with os.Exit(run()) for clean process exit handling
+  - Verbosity is determined with priority: CLI flags (--verbose/--quiet) > config file (defaultVerbosity) > default (normal)
+  - Color/emoji settings combine: ShouldEnableColor(noColorFlag, configColorEnabled) handles TTY detection and flag priority
+  - Auto-detected Claude path is saved to config for future use, with non-fatal warning if save fails
+  - When no prompt is provided, show version and usage help (exit 0)
+  - Event loop is simple: range over channel from StreamEventsFromProcess(), call display.HandleEvent() for each
+  - After process completion, check exit code and display error context if non-zero using output.DetectExitCodeError()
+---
+
+## 2026-02-16 - US-019
+- What was implemented: Added signal handling for graceful shutdown when user presses Ctrl+C or sends SIGTERM
+- Files changed: main.go (extended with signal handling), runner/runner.go (added Interrupt/Terminate methods), runner/signal_unix.go (new), runner/signal_windows.go (new)
+- **Learnings for future iterations:**
+  - Use os/signal.Notify() with a buffered channel (size 1) to catch SIGINT and SIGTERM
+  - Event streaming moved to goroutine to allow select{} between completion channel and signal channel
+  - Platform-specific signal handling uses Go build constraints: `//go:build !windows` and `//go:build windows`
+  - On Unix, SIGINT sends process.Signal(syscall.SIGINT), SIGTERM sends process.Signal(syscall.SIGTERM)
+  - On Windows, there's no reliable cross-process SIGINT, so process.Kill() is used for both
+  - Exit code convention: 128 + signal number (SIGINT=2 -> 130, SIGTERM=15 -> 143)
+  - Always call signal.Stop(sigChan) to clean up after handling or normal completion
+  - Wait for event channel to drain after sending termination signal to ensure clean shutdown
+---
+
+## 2026-02-16 - US-020
+- What was implemented: Verified existing cross-platform build scripts (build.sh, build.bat) that compile to windows/amd64, darwin/amd64, darwin/arm64, linux/amd64
+- Files changed: build.sh (committed), build.bat (committed)
+- **Learnings for future iterations:**
+  - Go cross-compilation uses GOOS and GOARCH environment variables (e.g., GOOS=darwin GOARCH=arm64)
+  - CGO_ENABLED=0 produces static binaries without C dependencies for better portability
+  - On Windows, the build.bat script uses `setlocal enabledelayedexpansion` for proper variable expansion
+  - Use `if errorlevel 1 goto :error` in batch files for error handling
+  - Output directory dist/ should be in .gitignore to avoid committing binaries
+  - Build scripts should clean the dist/ directory before building to ensure fresh binaries
+  - Go build cache corruption can cause cryptic errors; `go clean -cache` resolves these issues
+---
+
+## 2026-02-16 - US-021
+- What was implemented: Created comprehensive README.md with project description, installation instructions, usage examples, CLI flags documentation, config file format, and output mode examples
+- Files changed: README.md (new file)
+- **Learnings for future iterations:**
+  - README structure: features, installation (per-platform), usage with examples, flags table, config format with JSON example, output modes with samples
+  - Include screenshot placeholder with HTML comment for future addition: `<!-- TODO: Add screenshot -->`
+  - Link to Claude CLI installation docs for prerequisite: https://docs.anthropic.com/en/docs/claude-cli
+  - Use markdown tables for flags and config options for easy scanning
+  - Show example output for each verbosity mode (quiet, normal, verbose) to help users understand the differences
+---

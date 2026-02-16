@@ -1,0 +1,350 @@
+{
+  "project": "claude-proxy",
+  "branchName": "ralph/claude-proxy-cli",
+  "description": "Cross-platform CLI tool that wraps Claude CLI to provide real-time progress feedback during headless execution by parsing streaming JSON output",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Initialize Go project structure",
+      "description": "As a developer, I need the basic Go project setup with module initialization and main entry point.",
+      "acceptanceCriteria": [
+        "Create go.mod with module name 'github.com/peakflames/claude-proxy'",
+        "Create main.go with basic main() function that prints version",
+        "Add .gitignore for Go binaries and build artifacts",
+        "Typecheck passes (go build compiles successfully)"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Define configuration struct and JSON schema",
+      "description": "As a developer, I need Go structs to represent the config file format.",
+      "acceptanceCriteria": [
+        "Create config/config.go with Config struct",
+        "Config struct has fields: ClaudePath string, DefaultVerbosity string, ColorEnabled bool, EmojiEnabled bool",
+        "Add JSON struct tags for proper serialization",
+        "Add default values function that returns Config with sensible defaults",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Implement config file loading and saving",
+      "description": "As a developer, I need functions to read and write the config file from ~/.claude-proxy-config.json.",
+      "acceptanceCriteria": [
+        "Add LoadConfig() function that reads from ~/.claude-proxy-config.json",
+        "Add SaveConfig() function that writes config to ~/.claude-proxy-config.json",
+        "Use os.UserHomeDir() for cross-platform home directory",
+        "Return default config if file doesn't exist",
+        "Handle JSON parse errors gracefully with clear error message",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Implement Claude CLI path detection",
+      "description": "As a user running claude-proxy for the first time, I want the tool to automatically find my Claude CLI installation.",
+      "acceptanceCriteria": [
+        "Create detect/detect.go with DetectClaudePath() function",
+        "Use runtime.GOOS to detect platform",
+        "On Windows: run 'where claude' to find executable",
+        "On Unix (Linux/macOS): run 'which claude' to find executable",
+        "Return found path or error if not found",
+        "Error message includes installation instructions URL",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Implement config path validation",
+      "description": "As a user, if my Claude CLI path becomes invalid, I want clear instructions on how to fix the configuration.",
+      "acceptanceCriteria": [
+        "Add ValidatePath() function to config package",
+        "Check if path exists using os.Stat()",
+        "Check if path is executable (not a directory)",
+        "Return descriptive error: 'Claude CLI not found at [path]. Please update ~/.claude-proxy-config.json or delete it to auto-detect.'",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Implement command-line flag parsing",
+      "description": "As a user, I want to pass arguments to claude-proxy including verbosity flags.",
+      "acceptanceCriteria": [
+        "Create cli/flags.go with ParseFlags() function",
+        "Support --verbose flag for detailed output",
+        "Support --quiet flag for minimal output",
+        "Support --no-color flag to disable colors",
+        "Support --no-emoji flag to disable emojis",
+        "Support --config flag to specify config file path",
+        "Capture remaining args as the prompt/command for Claude",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Define JSON event type structs",
+      "description": "As a developer, I need Go structs to represent all Claude streaming JSON event types.",
+      "acceptanceCriteria": [
+        "Create events/types.go with structs for all event types",
+        "Define BaseEvent struct with Type field",
+        "Define SystemEvent for system.init, hook_started, hook_response",
+        "Define StreamEvent wrapper with nested Event object",
+        "Define content block types: TextBlock, ToolUseBlock, ToolResultBlock",
+        "Define ResultEvent with cost, duration, token usage fields",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Implement JSON event parser",
+      "description": "As a developer, I need to parse each JSON line from Claude's stream and return typed events.",
+      "acceptanceCriteria": [
+        "Create events/parser.go with ParseEvent() function",
+        "Accept JSON string, return typed event or error",
+        "Use json.Unmarshal to decode into appropriate struct based on 'type' field",
+        "Handle nested stream_event types (message_start, content_block_delta, etc.)",
+        "Return clear error for malformed JSON without crashing",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Implement process spawning and stdout capture",
+      "description": "As a developer, I need to spawn Claude CLI and capture its streaming stdout.",
+      "acceptanceCriteria": [
+        "Create runner/runner.go with RunClaude() function",
+        "Use os/exec to spawn Claude CLI process",
+        "Construct command: claude -p [prompt] --dangerously-skip-permissions --include-partial-messages --output-format=stream-json",
+        "Capture stdout as io.Reader pipe",
+        "Inherit environment variables from parent process",
+        "Return process handle and stdout reader",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Implement streaming line reader",
+      "description": "As a developer, I need to read stdout line-by-line and emit parsed events.",
+      "acceptanceCriteria": [
+        "Create runner/stream.go with StreamEvents() function",
+        "Use bufio.Scanner to read lines from stdout",
+        "Parse each line using events.ParseEvent()",
+        "Return channel of parsed events for real-time consumption",
+        "Handle EOF gracefully when process completes",
+        "Log and skip malformed JSON lines without stopping",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Implement output formatter with color support",
+      "description": "As a developer, I need a formatter that outputs colored text when enabled.",
+      "acceptanceCriteria": [
+        "Create output/formatter.go with Formatter struct",
+        "Formatter has ColorEnabled and EmojiEnabled fields",
+        "Add methods: Info(), Success(), Error(), Warning() with appropriate colors",
+        "Colors: info=blue, success=green, error=red, warning=yellow",
+        "Use ANSI escape codes for colors",
+        "When ColorEnabled=false, output plain text",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Implement normal verbosity display",
+      "description": "As a user, I want to see real-time updates showing what Claude is doing.",
+      "acceptanceCriteria": [
+        "Create output/display.go with Display struct",
+        "Handle tool_use events: show 'Reading file X', 'Running command Y', 'Writing file Z'",
+        "Handle text deltas: stream text output in real-time",
+        "Handle message_start/message_stop: show visual separators",
+        "Use emojis when enabled (e.g., magnifying glass for Read, lightning for Bash)",
+        "Show 'Completed' message when stream ends",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Implement verbose mode display",
+      "description": "As a user debugging an issue, I want to see detailed tool call info.",
+      "acceptanceCriteria": [
+        "Extend Display struct with verbose mode handling",
+        "Show full tool call parameters (command, file paths, etc.)",
+        "Display tool results (stdout, stderr, exit codes)",
+        "Show token usage from message_delta events",
+        "Print session metadata from system.init event",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Implement quiet mode display",
+      "description": "As a user running in scripts, I want minimal output.",
+      "acceptanceCriteria": [
+        "Extend Display struct with quiet mode handling",
+        "Show only: start indicator and completion indicator",
+        "Show errors when they occur",
+        "Preserve final text result from Claude",
+        "Suppress all intermediate progress updates",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Implement error detection and formatting",
+      "description": "As a user, I want clear error messages when Claude CLI encounters errors.",
+      "acceptanceCriteria": [
+        "Detect is_error: true in tool result events",
+        "Detect non-zero exit codes from Claude CLI process",
+        "Format errors with 'ERROR:' prefix in red",
+        "Preserve error context (exit code, stderr content)",
+        "Map common errors to user-friendly messages",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Implement result summary display",
+      "description": "As a user, I want to see session summary with cost and duration when Claude finishes.",
+      "acceptanceCriteria": [
+        "Handle type='result' event at end of stream",
+        "Parse and display total_cost_usd formatted as currency",
+        "Display duration_ms and duration_api_ms in human-readable format",
+        "Show num_turns count",
+        "Format: 'Session complete: N turns, X.Xs total (Y.Ys API), $Z.ZZ'",
+        "In verbose mode, show detailed per-model token counts",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Implement TTY detection for auto color disable",
+      "description": "As a user piping output, I want colors automatically disabled.",
+      "acceptanceCriteria": [
+        "Create output/tty.go with IsTTY() function",
+        "Check if stdout is a terminal using os.Stdout.Stat()",
+        "When not a TTY and no explicit --color flag, default ColorEnabled to false",
+        "Override with --no-color or config file setting",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Wire up main function with all components",
+      "description": "As a developer, I need main.go to orchestrate config, parsing, running, and display.",
+      "acceptanceCriteria": [
+        "Load or create config on startup",
+        "Auto-detect Claude path if not configured",
+        "Validate Claude path exists",
+        "Parse command-line flags",
+        "Spawn Claude CLI with user prompt",
+        "Stream events to display handler",
+        "Return Claude CLI exit code as program exit code",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Implement signal handling for graceful shutdown",
+      "description": "As a user pressing Ctrl+C, I want claude-proxy to terminate the child process gracefully.",
+      "acceptanceCriteria": [
+        "Listen for SIGINT and SIGTERM signals",
+        "On signal, send termination signal to child Claude process",
+        "Wait for child process to exit",
+        "Clean up resources before exiting",
+        "Exit with appropriate code (130 for SIGINT)",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Create cross-platform build script",
+      "description": "As a developer, I want to build claude-proxy for all platforms from one command.",
+      "acceptanceCriteria": [
+        "Create build.sh (Unix) and build.bat (Windows) scripts",
+        "Cross-compile for: windows/amd64, darwin/amd64, darwin/arm64, linux/amd64",
+        "Output binaries: claude-proxy-windows-amd64.exe, claude-proxy-darwin-amd64, claude-proxy-darwin-arm64, claude-proxy-linux-amd64",
+        "Place binaries in dist/ directory",
+        "Use CGO_ENABLED=0 for static linking",
+        "Typecheck passes (go build succeeds for all targets)"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Create README with installation and usage docs",
+      "description": "As a user, I want documentation on how to install and use claude-proxy.",
+      "acceptanceCriteria": [
+        "Create README.md with project description",
+        "Document installation: download binary for platform, add to PATH",
+        "Document usage: claude-proxy 'your prompt here'",
+        "Document flags: --verbose, --quiet, --no-color, --no-emoji, --config",
+        "Document config file format with example JSON",
+        "Include example output screenshot placeholder",
+        "Typecheck passes (N/A for docs)"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

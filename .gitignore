@@ -1,0 +1,41 @@
+# Existing
+archive/claude-code.stdout.txt
+
+# Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/claude-print
+
+# Go build artifacts
+*.o
+*.a
+*.test
+
+# Go coverage
+*.out
+coverage.html
+
+# Build output
+/dist/
+/bin/
+
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Process management
+.claude-print.pid
+.claude-print.log
+tmp/
+**/*wordle/**/*
+**/*wordle*
