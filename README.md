@@ -15,31 +15,24 @@ A cross-platform CLI wrapper for Claude CLI that provides real-time progress fee
 
 ## Installation
 
-### Download Pre-built Binary
+### Quick Install
 
-Download the latest release from the [releases page](https://github.com/peakflames/claude-print/releases):
+Downloads the latest release binary and places it alongside your `claude` executable — no PATH configuration needed.
 
-| Platform | Binary |
-|----------|--------|
-| Windows (64-bit) | `claude-print-windows-amd64.exe` |
-| macOS (Intel) | `claude-print-darwin-amd64` |
-| macOS (Apple Silicon) | `claude-print-darwin-arm64` |
-| Linux (64-bit) | `claude-print-linux-amd64` |
-
-### Setup
-
-**Windows:**
-1. Move the binary to a directory (e.g., `C:\Tools`)
-2. Rename to `claude-print.exe` for convenience
-3. Add the directory to your PATH environment variable
-
-**macOS/Linux:**
+**macOS (Apple Silicon):**
 ```bash
-# Move to a directory in your PATH
-sudo mv claude-print-darwin-arm64 /usr/local/bin/claude-print
+curl -fsSL https://github.com/peakflames/claude-print/releases/latest/download/claude-print-darwin-arm64 -o "$(dirname "$(which claude)")/claude-print" && chmod +x "$(dirname "$(which claude)")/claude-print"
+```
 
-# Make it executable
-sudo chmod +x /usr/local/bin/claude-print
+**macOS (Intel) / Linux:**
+```bash
+curl -fsSL https://github.com/peakflames/claude-print/releases/latest/download/claude-print-linux-amd64 -o "$(dirname "$(which claude)")/claude-print" && chmod +x "$(dirname "$(which claude)")/claude-print"
+```
+> For macOS Intel, replace `linux-amd64` with `darwin-amd64`.
+
+**Windows (PowerShell):**
+```powershell
+Invoke-WebRequest -Uri "https://github.com/peakflames/claude-print/releases/latest/download/claude-print-windows-amd64.exe" -OutFile "$(Split-Path (Get-Command claude).Source)\claude-print.exe"
 ```
 
 ### Build from Source
