@@ -17,22 +17,26 @@ A cross-platform CLI wrapper for Claude CLI that provides real-time progress fee
 
 ### Quick Install
 
-Downloads the latest release binary and places it alongside your `claude` executable — no PATH configuration needed.
+Downloads the latest release binary and places it in `~/.local/bin` alongside your Claude CLI installation.
 
 **macOS (Apple Silicon):**
 ```bash
-curl -fsSL https://github.com/peakflames/claude-print/releases/latest/download/claude-print-darwin-arm64 -o "$(dirname "$(which claude)")/claude-print" && chmod +x "$(dirname "$(which claude)")/claude-print"
+curl -fsSL https://github.com/peakflames/claude-print/releases/latest/download/claude-print-darwin-arm64 -o ~/.local/bin/claude-print && chmod +x ~/.local/bin/claude-print
 ```
 
-**macOS (Intel) / Linux:**
+**macOS (Intel):**
 ```bash
-curl -fsSL https://github.com/peakflames/claude-print/releases/latest/download/claude-print-linux-amd64 -o "$(dirname "$(which claude)")/claude-print" && chmod +x "$(dirname "$(which claude)")/claude-print"
+curl -fsSL https://github.com/peakflames/claude-print/releases/latest/download/claude-print-darwin-amd64 -o ~/.local/bin/claude-print && chmod +x ~/.local/bin/claude-print
 ```
-> For macOS Intel, replace `linux-amd64` with `darwin-amd64`.
+
+**Linux:**
+```bash
+curl -fsSL https://github.com/peakflames/claude-print/releases/latest/download/claude-print-linux-amd64 -o ~/.local/bin/claude-print && chmod +x ~/.local/bin/claude-print
+```
 
 **Windows (PowerShell):**
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/peakflames/claude-print/releases/latest/download/claude-print-windows-amd64.exe" -OutFile "$(Split-Path (Get-Command claude).Source)\claude-print.exe"
+Invoke-WebRequest -Uri "https://github.com/peakflames/claude-print/releases/latest/download/claude-print-windows-amd64.exe" -OutFile "$env:USERPROFILE\.local\bin\claude-print.exe"
 ```
 
 ### Build from Source
