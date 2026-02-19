@@ -4,10 +4,24 @@ Perform a release of claude-print.
 
 **You MUST follow every step in order. Do NOT skip steps. Confirm each step completes before proceeding.**
 
+## Smart Mode Assumptions (When run with no arguments)
+
+When you run this command without arguments, make these intelligent assumptions:
+
+- **Branch handling**: If not on `develop`, offer to switch automatically. Stash uncommitted changes if needed.
+- **Version**: Auto-detect from `cmd/claude-print/main.go`. This is authoritative.
+- **Release description**: Scan the `## [Unreleased]` section in CHANGELOG.md. If it has items, suggest a concise description based on them. If empty, ask the user briefly.
+- **Next version**: Auto-calculate by incrementing the minor version component (e.g., 0.2.0 → 0.3.0).
+- **Confirmation**: Show a summary of detected values and ask for approval before proceeding. Allow the user to override any value.
+
 ## Prerequisites
 
-- Must be on `develop` branch. If not, abort and tell the user.
-- Check for uncommitted changes. If any exist, abort and tell the user.
+- Must be on `develop` branch. If not on develop:
+  - Offer to stash changes and switch to develop
+  - Only proceed if user confirms
+- Check for uncommitted changes. If any exist:
+  - Offer to stash them (they'll be restored after release)
+  - Only abort if user declines stashing
 - Read the version from `cmd/claude-print/main.go` (the `var version = "X.Y.Z"` line). This is the **release version** for all steps below. Refer to it as `VERSION` throughout.
 - If the user provided a version argument, verify it matches the source version. If it doesn't match, abort and tell the user.
 - Confirm the version with the user before proceeding.
@@ -29,7 +43,14 @@ git push
 
 ## Step 3: Tag the release (on main)
 
-Ask the user for a brief release description, then:
+Determine release description:
+- If running with `--description` flag, use that value
+- If running without args, auto-generate from CHANGELOG `[Unreleased]` section:
+  - If section has items, create a one-line summary (e.g., "Improve display formatting and add bug fixes")
+  - If section is empty, ask user briefly: "Brief release description?"
+- Show the final description to user and ask for approval
+
+Create and push the tag:
 
 ```bash
 git tag -a vVERSION -m "Release vVERSION - <description>"
@@ -55,6 +76,44 @@ Calculate the next minor version by incrementing the minor component of `VERSION
 ## Completion
 
 Report a summary of what was done: version released, tag pushed, new development version.
+
+## Agent Implementation Notes
+
+These are guidelines for the agent executing this protocol:
+
+### Smart Defaults Strategy
+
+1. **Version detection**: Parse `cmd/claude-print/main.go` to extract the version. This is always authoritative—never ask the user to provide it.
+
+2. **Changelog scanning**: Read `CHANGELOG.md` to see what's in `[Unreleased]`:
+   - If it contains items (features, fixes, changes), summarize them into 1-2 sentences as the default description
+   - If empty, ask minimally: "Enter a brief release description (or press Enter to skip)"
+   - Show the auto-generated description to the user and let them approve/modify it
+
+3. **Next version calculation**: Always increment the minor version (e.g., 0.2.0 → 0.3.0)
+
+4. **Pre-release checklist**: Show the user a confirmation screen with:
+   - Current version being released
+   - Suggested release description
+   - Next development version
+   - All git operations that will be performed
+   - "Proceed?" prompt
+
+### Branch and Stash Handling
+
+- If not on `develop`, **offer** to switch rather than abort:
+  - "Current branch is X. Switch to develop and proceed?"
+- If uncommitted changes exist, **offer** to stash:
+  - "Found X uncommitted changes. Stash them temporarily?"
+  - After release completes, restore stashed changes with `git stash pop`
+  - Only abort if user explicitly declines
+
+### User Experience Goals
+
+- Minimize interaction: Junior engineers should never need to know git commands
+- Maximize clarity: Each step should report what happened
+- Enable recovery: If any step fails, suggest next steps clearly
+- Provide context: Explain *why* each step matters (e.g., "Tagging creates a permanent release marker")
 
 ## Reminder
 
