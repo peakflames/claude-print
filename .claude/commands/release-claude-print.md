@@ -43,6 +43,13 @@ git push
 
 ## Step 3: Tag the release (on main)
 
+**⚠️ IMPORTANT: Pushing the tag triggers the CI/CD build workflow!**
+
+When you push this tag, GitHub Actions will automatically:
+1. Run quality checks (format, vet, tests)
+2. Build binaries for all platforms (Windows, macOS Intel/ARM, Linux)
+3. Create a GitHub Release with downloadable binaries
+
 Determine release description:
 - If running with `--description` flag, use that value
 - If running without args, auto-generate from CHANGELOG `[Unreleased]` section:
@@ -50,12 +57,18 @@ Determine release description:
   - If section is empty, ask user briefly: "Brief release description?"
 - Show the final description to user and ask for approval
 
-Create and push the tag:
+Create and push the tag (this starts the build):
 
 ```bash
 git tag -a vVERSION -m "Release vVERSION - <description>"
 git push origin vVERSION
 ```
+
+**Build Workflow Triggers Automatically**
+- Monitor at: `https://github.com/peakflames/claude-print/actions`
+- The workflow must pass all quality checks before building
+- If it fails, check the logs and fix issues on develop, then re-tag and retry
+- On success, binaries appear in the GitHub Release (takes ~2-5 minutes)
 
 ## Step 4: Merge back to develop
 
@@ -73,9 +86,36 @@ Calculate the next minor version by incrementing the minor component of `VERSION
 - Commit: `chore: bump version to <next_version> for next development cycle`
 - Push: `git push`
 
+## Step 6: Verify Build Initiated (Optional but Recommended)
+
+After pushing the tag, verify that the CI workflow started:
+
+```bash
+gh run list --workflow release.yml --limit 1
+```
+
+Or visit: `https://github.com/peakflames/claude-print/actions`
+
+Look for:
+- A new workflow run for the tag you just pushed
+- Status should show "In progress" or "✓ Completed"
+- If it shows "✗ Failed", click the run to see what went wrong
+
+Note: If quality checks fail, the build will abort. You'll need to:
+1. Fix the issues on develop
+2. Commit and push the fix
+3. Delete the tag locally and remote: `git tag -d vVERSION && git push origin :vVERSION`
+4. Re-tag and push the corrected version
+
 ## Completion
 
-Report a summary of what was done: version released, tag pushed, new development version.
+Report a summary of what was done:
+- Version released: vVERSION
+- Tag pushed to remote (and build workflow triggered automatically)
+- New development version: <next_version>
+- Build status: [Link to GitHub Actions run or "monitor at https://github.com/peakflames/claude-print/actions"]
+
+Junior engineers should understand that the release is not "complete" until the CI workflow succeeds and binaries are published.
 
 ## Agent Implementation Notes
 
@@ -108,12 +148,34 @@ These are guidelines for the agent executing this protocol:
   - After release completes, restore stashed changes with `git stash pop`
   - Only abort if user explicitly declines
 
+### Build Workflow Integration
+
+The **tag push in Step 3 is critical** — it automatically triggers the release workflow that:
+- Runs quality checks (code formatting, go vet, tests)
+- Builds binaries for all platforms
+- Creates GitHub Release with downloadable artifacts
+
+Make this explicit to the user after tag push:
+```
+✓ Tag v0.2.0 pushed successfully
+  Build workflow triggered automatically!
+  Monitor progress: https://github.com/peakflames/claude-print/actions
+  (builds typically complete in 2-5 minutes)
+```
+
+In Step 6, verify the workflow started by checking GitHub Actions or using `gh run list --workflow release.yml`.
+
+If the workflow fails:
+- Advise user to check the error in GitHub Actions
+- Provide rollback instructions: delete tag and re-tag after fixes
+- Never leave a failed tag on remote
+
 ### User Experience Goals
 
 - Minimize interaction: Junior engineers should never need to know git commands
-- Maximize clarity: Each step should report what happened
+- Maximize clarity: Each step should report what happened and why
 - Enable recovery: If any step fails, suggest next steps clearly
-- Provide context: Explain *why* each step matters (e.g., "Tagging creates a permanent release marker")
+- Build transparency: Make it obvious that tag push triggers the CI build and when it's complete
 
 ## Reminder
 
