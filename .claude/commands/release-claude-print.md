@@ -86,9 +86,9 @@ Calculate the next minor version by incrementing the minor component of `VERSION
 - Commit: `chore: bump version to <next_version> for next development cycle`
 - Push: `git push`
 
-## Step 6: Verify Build Initiated (Optional but Recommended)
+## Step 6: Verify Build Initiated (CRITICAL)
 
-After pushing the tag, verify that the CI workflow started:
+After pushing the tag, verify that the CI workflow started **within 30 seconds**.
 
 ```bash
 gh run list --workflow release.yml --limit 1
@@ -96,16 +96,42 @@ gh run list --workflow release.yml --limit 1
 
 Or visit: `https://github.com/peakflames/claude-print/actions`
 
-Look for:
-- A new workflow run for the tag you just pushed
-- Status should show "In progress" or "✓ Completed"
-- If it shows "✗ Failed", click the run to see what went wrong
+### Expected Status
+- ✓ "In progress" or "In queue" (build is running)
+- ✓ "✓ Completed" (build finished successfully)
+- ✗ "✗ Failed" - Review the error and recovery steps below
 
-Note: If quality checks fail, the build will abort. You'll need to:
-1. Fix the issues on develop
+### If Workflow Didn't Trigger
+If you don't see a new run for v0.2.0 within 30 seconds:
+
+1. Verify the tag was actually pushed:
+   ```bash
+   git ls-remote origin v0.2.0
+   ```
+
+2. If tag exists on remote but workflow didn't run:
+   - Delete the tag and re-push to force trigger:
+   ```bash
+   git tag -d vVERSION
+   git push origin :vVERSION
+   git tag -a vVERSION -m "Release vVERSION - <description>" <commit-hash>
+   git push origin vVERSION
+   ```
+
+3. Check GitHub Actions settings - ensure workflows are enabled for your repository
+
+### If Quality Checks Fail
+
+The build will be aborted. You'll need to:
+
+1. Fix the issues on develop branch
 2. Commit and push the fix
-3. Delete the tag locally and remote: `git tag -d vVERSION && git push origin :vVERSION`
-4. Re-tag and push the corrected version
+3. Delete the failed tag:
+   ```bash
+   git tag -d vVERSION
+   git push origin :vVERSION
+   ```
+4. Re-tag and push the corrected version from step 3 above
 
 ## Completion
 
@@ -155,20 +181,32 @@ The **tag push in Step 3 is critical** — it automatically triggers the release
 - Builds binaries for all platforms
 - Creates GitHub Release with downloadable artifacts
 
-Make this explicit to the user after tag push:
+**IMPORTANT**: The workflow MUST start within 30 seconds. If it doesn't appear:
+- Check if tag actually exists on remote: `git ls-remote origin vVERSION`
+- If tag exists but no workflow run appears, re-push the tag to force trigger
+- This is a known GitHub issue - retrying usually fixes it
+
+After tag push, immediately show user:
 ```
-✓ Tag v0.2.0 pushed successfully
+✓ Tag vVERSION pushed successfully
   Build workflow triggered automatically!
   Monitor progress: https://github.com/peakflames/claude-print/actions
   (builds typically complete in 2-5 minutes)
+
+⏳ Checking workflow status...
+[Wait 30 seconds and verify workflow appears in Actions tab]
 ```
 
-In Step 6, verify the workflow started by checking GitHub Actions or using `gh run list --workflow release.yml`.
+In Step 6 (verification), show:
+- Workflow run details (status, which stage it's on)
+- Direct link to the run
+- What to do if workflow didn't appear (re-push recovery steps)
+- What to do if workflow failed (debugging steps)
 
-If the workflow fails:
-- Advise user to check the error in GitHub Actions
-- Provide rollback instructions: delete tag and re-tag after fixes
-- Never leave a failed tag on remote
+Never proceed to next steps or consider release "done" until:
+1. Workflow has started (visible in GitHub Actions)
+2. All quality checks passed
+3. Binaries were built successfully
 
 ### User Experience Goals
 
