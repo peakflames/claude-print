@@ -560,6 +560,12 @@ func (d *Display) showToolUse(toolName string, toolID string, input map[string]i
 		Input: input,
 	}
 
+	// Separate consecutive tool call headers (or a header after a result line) with a blank line.
+	if d.State.LastMessageWasToolUse || d.State.ToolResultJustDisplayed {
+		fmt.Fprintln(d.Writer)
+		d.State.ToolResultJustDisplayed = false
+	}
+
 	// Format: ● ToolName(param) - only bullet is colored green
 	paramStr := d.formatToolParams(toolName, input)
 	var text string
