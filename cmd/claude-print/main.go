@@ -13,7 +13,7 @@ import (
 	"github.com/peakflames/claude-print/internal/runner"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 func printUsage(ver string) {
 	fmt.Printf("claude-print %s\n", ver)

@@ -203,7 +203,7 @@ func (d *Display) handleVerboseEvent(event events.Event) {
 		// Top-level "assistant" event with complete tool_use inputs
 		d.handleVerboseAssistantEvent(e)
 	case events.UserEvent:
-		d.handleUserEvent(e)
+		d.handleVerboseUserEvent(e)
 	case events.ResultEvent:
 		d.showResultSummary(e, true)
 	case events.SystemEvent:
@@ -215,50 +215,17 @@ func (d *Display) handleVerboseEvent(event events.Event) {
 func (d *Display) handleVerboseStreamEvent(e events.StreamEvent) {
 	switch e.Event.Type {
 	case "message_start":
-		d.showVerboseMessageStart(e)
+		d.showVerboseMessageStart(e) // verbose-only: model info
 	case "message_stop":
-		d.showMessageStop()
+		d.showMessageStop() // shared
 	case "content_block_start":
-		d.handleVerboseContentBlockStart(e)
+		d.handleContentBlockStart(e) // shared (handles text bullet, tool tracking)
 	case "content_block_delta":
-		d.handleVerboseContentBlockDelta(e)
+		d.handleContentBlockDelta(e) // shared (streams text)
+	case "content_block_stop":
+		d.handleContentBlockStop(e) // shared (closes text block)
 	case "message_delta":
-		d.handleMessageDelta(e)
-	}
-}
-
-// handleVerboseContentBlockStart processes content block start with full details.
-// NOTE: With --include-partial-messages, tool_use input is empty here.
-// The full input comes in the subsequent "assistant" event, so we skip tool_use display.
-func (d *Display) handleVerboseContentBlockStart(e events.StreamEvent) {
-	if e.Event.ContentBlock == nil {
-		return
-	}
-
-	block := e.Event.ContentBlock
-	switch block.Type {
-	case "tool_use":
-		// Track tool but don't display - input is empty here
-		// Full display happens in handleVerboseAssistantEvent
-		d.State.PendingTools[block.ID] = &PendingToolCall{
-			ID:    block.ID,
-			Name:  block.Name,
-			Input: block.Input,
-		}
-	case "tool_result":
-		d.showVerboseToolResult(block)
-	}
-}
-
-// handleVerboseContentBlockDelta processes content deltas with full details.
-func (d *Display) handleVerboseContentBlockDelta(e events.StreamEvent) {
-	if e.Event.Delta == nil {
-		return
-	}
-
-	// Stream text output in real-time
-	if e.Event.Delta.Text != "" {
-		d.Formatter.PlainNoNewline("%s", e.Event.Delta.Text)
+		d.handleMessageDelta(e) // verbose-only: token usage
 	}
 }
 
@@ -276,7 +243,9 @@ func (d *Display) handleVerboseAssistantMessage(e events.AssistantMessageEvent) 
 		case "tool_use":
 			d.showVerboseToolUse(block.Name, block.ID, block.Input)
 		case "tool_result":
-			d.showVerboseToolResult(&block)
+			if block.IsError {
+				d.Formatter.Error("%sError: %s", TreeBranch, block.Content)
+			}
 		}
 	}
 }
@@ -333,18 +302,17 @@ func (d *Display) showSessionMetadata(e events.SystemEvent) {
 }
 
 // showVerboseToolUse displays a tool use event with full parameters.
+// Uses the shared compact header (green bullet, state tracking) then appends parameter detail.
 func (d *Display) showVerboseToolUse(toolName string, toolID string, input map[string]interface{}) {
-	// Track pending tool for result matching
-	d.State.PendingTools[toolID] = &PendingToolCall{
-		ID:    toolID,
-		Name:  toolName,
-		Input: input,
-	}
+	// Shared compact header: ● ToolName(params) with green bullet + state tracking
+	d.showToolUse(toolName, toolID, input)
 
-	d.Formatter.Info("%s %s", Bullet, toolName)
-	d.Formatter.Plain("  Parameters:")
-	for key, value := range input {
-		d.formatParameterValue(key, value, "    ")
+	// Verbose addition: full parameter listing
+	if len(input) > 0 {
+		d.Formatter.Plain("  Parameters:")
+		for key, value := range input {
+			d.formatParameterValue(key, value, "    ")
+		}
 	}
 }
 
@@ -381,35 +349,6 @@ func (d *Display) formatParameterValue(key string, value interface{}, indent str
 	}
 }
 
-// showVerboseToolResult displays a tool result with full output.
-func (d *Display) showVerboseToolResult(block *events.ContentBlock) {
-	if block.IsError {
-		d.Formatter.Error("%sTool Result (ERROR):", TreeBranch)
-	} else {
-		d.Formatter.Success("%sTool Result:", TreeBranch)
-	}
-
-	content := block.ContentString
-	if content != "" {
-		lines := strings.Split(content, "\n")
-		if len(lines) > 20 {
-			// Show first 10 and last 5 lines for long output
-			d.Formatter.Plain("  (Showing %d of %d lines)", 15, len(lines))
-			for i := 0; i < 10; i++ {
-				d.Formatter.Plain("  %s", truncateLine(lines[i], 120))
-			}
-			d.Formatter.Plain("  ...")
-			for i := len(lines) - 5; i < len(lines); i++ {
-				d.Formatter.Plain("  %s", truncateLine(lines[i], 120))
-			}
-		} else {
-			for _, line := range lines {
-				d.Formatter.Plain("  %s", truncateLine(line, 120))
-			}
-		}
-	}
-}
-
 // truncateLine truncates a line to the specified max length.
 func truncateLine(line string, maxLen int) string {
 	if len(line) > maxLen {
@@ -432,8 +371,8 @@ func (d *Display) showTokenUsage(usage *events.Usage) {
 }
 
 // showVerboseMessageStart displays message start with model info if available.
+// No blank line here — the shared text block handler emits a separator before text.
 func (d *Display) showVerboseMessageStart(e events.StreamEvent) {
-	fmt.Fprintln(d.Writer) // Blank line before message
 	if e.Event.Message != nil && e.Event.Message.Model != "" {
 		d.Formatter.Info("  Model: %s", e.Event.Message.Model)
 	}
@@ -549,6 +488,49 @@ func (d *Display) handleUserEvent(e events.UserEvent) {
 	}
 }
 
+// handleVerboseUserEvent handles user events in verbose mode.
+// Shows the compact result line (shared) then appends full truncated content.
+func (d *Display) handleVerboseUserEvent(e events.UserEvent) {
+	for _, block := range e.Message.Content {
+		if block.Type == "tool_result" {
+			if block.IsError && d.isToolDenied(block.ContentString) {
+				d.showToolDenied(block.ToolUseID, block.ContentString)
+			} else {
+				// Compact summary line (shared): ⎿  Read N lines
+				d.showToolResult(block.ToolUseID, e.ToolUseResult, block.ContentString)
+				// Verbose addition: truncated raw content
+				d.showVerboseToolContent(block.ContentString, block.IsError)
+			}
+		}
+	}
+}
+
+// showVerboseToolContent displays truncated tool output content below the compact result line.
+func (d *Display) showVerboseToolContent(content string, isError bool) {
+	if content == "" {
+		return
+	}
+	lines := strings.Split(content, "\n")
+	total := len(lines)
+	const maxLines = 15
+	if total > maxLines {
+		d.Formatter.Plain("  (Showing %d of %d lines)", maxLines, total)
+		for i := 0; i < 10 && i < total; i++ {
+			d.Formatter.Plain("  %s", truncateLine(lines[i], 120))
+		}
+		d.Formatter.Plain("  ...")
+		for i := total - 5; i < total; i++ {
+			if i >= 0 {
+				d.Formatter.Plain("  %s", truncateLine(lines[i], 120))
+			}
+		}
+	} else {
+		for _, line := range lines {
+			d.Formatter.Plain("  %s", truncateLine(line, 120))
+		}
+	}
+}
+
 // isToolDenied checks if the content indicates a permission denial
 func (d *Display) isToolDenied(content string) bool {
 	return strings.Contains(content, "Permission to use") && strings.Contains(content, "has been denied")
@@ -576,6 +558,12 @@ func (d *Display) showToolUse(toolName string, toolID string, input map[string]i
 		ID:    toolID,
 		Name:  toolName,
 		Input: input,
+	}
+
+	// Separate consecutive tool call headers (or a header after a result line) with a blank line.
+	if d.State.LastMessageWasToolUse || d.State.ToolResultJustDisplayed {
+		fmt.Fprintln(d.Writer)
+		d.State.ToolResultJustDisplayed = false
 	}
 
 	// Format: ● ToolName(param) - only bullet is colored green
