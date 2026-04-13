@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -108,6 +109,19 @@ func ParseFlags() (Flags, error) {
 	}
 
 	f.PassthroughArgs = passthrough
+
+	// If no prompt was given as a positional arg, try reading from stdin.
+	// This allows callers to pipe large prompts.
+	if f.Prompt == "" {
+		stat, err := os.Stdin.Stat()
+		if err == nil && stat != nil && (stat.Mode()&os.ModeCharDevice) == 0 {
+			data, err := io.ReadAll(os.Stdin)
+			if err == nil {
+				f.Prompt = strings.TrimSpace(string(data))
+			}
+		}
+	}
+
 	return f, nil
 }
 
