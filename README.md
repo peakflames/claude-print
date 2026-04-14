@@ -83,6 +83,14 @@ claude-print "Quick task" --max-turns 5
 
 # Continue previous session
 claude-print --continue
+
+# Read prompt from stdin
+echo "What is 2+2?" | claude-print
+cat prompt.txt | claude-print --quiet
+
+# Stream structured JSON events (display goes to stderr, JSON to stdout)
+claude-print --stream-json "Summarize this" | jq .
+echo "large prompt" | claude-print --stream-json | post-processing-tool
 ```
 
 ### Headless Automation
@@ -102,7 +110,7 @@ The `examples/` directory contains real-world automation patterns:
 | `--verbose` | Enable detailed output |
 | `--quiet` | Minimal output (errors and results only) |
 | `--no-color` | Disable colored output |
-| `--stream-json` | Emit structured JSON events to stdout; display output moves to stderr |
+| `--stream-json` | Write structured JSON events to stdout; display goes to stderr |
 | `--config` | Path to config file (default: `~/.claude-print-config.json`) |
 | `--debug-log` | Log raw JSON stream to directory |
 
@@ -183,48 +191,31 @@ Hello! I've completed the task.
 Done
 ```
 
-### Structured JSON Output (`--stream-json`)
+### Stream JSON Mode (`--stream-json`)
 
-Routes visual display to stderr and emits a line-delimited JSON event stream to stdout. Useful for programmatic consumption — pipe the result into another tool while still watching progress in the terminal.
-
-**Event types:**
-
-| `type` | Fields | Description |
-|--------|--------|-------------|
-| `text` | `content` | Incremental text from Claude's response |
-| `tool_call` | `tool`, `input` | A tool invocation with its full input |
-| `tool_result` | `tool`, `summary` | Tool execution result summary |
-| `result` | `cost`, `duration_ms`, `turns`, `is_error` | Session completion metadata |
-
-**Examples:**
+Routes visual progress output to **stderr** and emits newline-delimited JSON
+events to **stdout**. Ideal for piping into downstream tools while still seeing
+human-readable progress.
 
 ```bash
-# Watch progress live, capture only the response text
-claude-print --stream-json "Summarize this repo" \
-  | jq -r 'select(.type=="text") | .content' \
-  | tee summary.txt
+# Visual progress on stderr, structured JSON on stdout
+claude-print --stream-json "Refactor main.go" 2>progress.log | jq .
 
-# Capture full JSON stream to a file while watching progress
-claude-print --stream-json "What is 2+2?" > events.jsonl
-
-# Suppress display output entirely, process JSON only
-claude-print --stream-json "Generate a haiku" 2>/dev/null \
-  | jq -r 'select(.type=="text") | .content'
-
-# Show only tool calls made during execution
-claude-print --stream-json "Refactor main.go" 2>/dev/null \
-  | jq 'select(.type=="tool_call") | {tool, input}'
+# Combine with stdin prompt for fully scriptable pipelines
+echo "Summarize this file" | claude-print --stream-json 2>/dev/null | jq -r 'select(.type=="text") | .content'
 ```
 
-**Sample output** (stdout with `--stream-json`):
-```json
-{"type":"text","content":"I'll analyze the "}
-{"type":"text","content":"codebase structure..."}
-{"type":"tool_call","tool":"Glob","input":{"pattern":"**/*.go"}}
-{"type":"tool_result","tool":"Glob","summary":"Found 12 files"}
-{"type":"text","content":"Found 12 Go files organized as follows..."}
-{"type":"result","cost":0.0042,"duration_ms":3821,"turns":2}
-```
+**JSON event schema:**
+
+| Event | Fields |
+|-------|--------|
+| Text chunk | `{"type":"text","content":"..."}` |
+| Tool call | `{"type":"tool_call","tool":"Read","input":{...}}` |
+| Tool result | `{"type":"tool_result","tool":"Read","summary":"Read 15 lines"}` |
+| Session end | `{"type":"result","cost":0.002,"duration_ms":3210,"turns":2,"is_error":false}` |
+
+Each line is a complete JSON object. Events are emitted in real-time as Claude
+runs, so consumers can process them incrementally.
 
 ## Requirements
 

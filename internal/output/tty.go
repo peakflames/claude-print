@@ -34,16 +34,14 @@ func IsStderrTTY() bool {
 // 1. Explicit user flag (noColorFlag) - if true, colors are disabled
 // 2. NO_COLOR environment variable - if set, colors are disabled (https://no-color.org/)
 // 3. Config file setting (configColorEnabled) - user preference from config
-// 4. TTY detection - if stderr is not a TTY, colors are disabled by default
-//
-// Display output goes to stderr, so TTY detection checks stderr.
+// 4. TTY detection on displayFile - if not a TTY, colors are disabled by default
 //
 // The priority is:
 // - If noColorFlag is true, return false (user explicitly disabled)
 // - If NO_COLOR env var is set, return false (respect convention)
-// - If stderr is not a TTY (piped/redirected), return false
+// - If displayFile is not a TTY (piped/redirected), return false
 // - Otherwise, return configColorEnabled (respect config file setting)
-func ShouldEnableColor(noColorFlag bool, configColorEnabled bool) bool {
+func ShouldEnableColor(noColorFlag bool, configColorEnabled bool, displayFile *os.File) bool {
 	// Explicit --no-color flag takes highest priority
 	if noColorFlag {
 		return false
@@ -54,8 +52,8 @@ func ShouldEnableColor(noColorFlag bool, configColorEnabled bool) bool {
 		return false
 	}
 
-	// Display goes to stderr — check stderr for TTY (pipe/redirect scenario)
-	if !IsStderrTTY() {
+	// If the display file is not a TTY (piped/redirected), disable colors
+	if !IsTTY(displayFile) {
 		return false
 	}
 
