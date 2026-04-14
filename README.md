@@ -9,6 +9,7 @@ A cross-platform CLI wrapper for Claude CLI that provides real-time progress fee
 - Real-time progress updates showing what Claude is doing
 - Colored, formatted output
 - Three verbosity levels: quiet, normal, and verbose
+- Structured JSON output mode (`--stream-json`) for programmatic consumption
 - Automatic TTY detection for script-friendly output
 - Cross-platform support (Windows, macOS, Linux)
 - Graceful shutdown on Ctrl+C
@@ -101,6 +102,7 @@ The `examples/` directory contains real-world automation patterns:
 | `--verbose` | Enable detailed output |
 | `--quiet` | Minimal output (errors and results only) |
 | `--no-color` | Disable colored output |
+| `--stream-json` | Emit structured JSON events to stdout; display output moves to stderr |
 | `--config` | Path to config file (default: `~/.claude-print-config.json`) |
 | `--debug-log` | Log raw JSON stream to directory |
 
@@ -179,6 +181,49 @@ Minimal output for scripts - only errors and final result:
 Starting...
 Hello! I've completed the task.
 Done
+```
+
+### Structured JSON Output (`--stream-json`)
+
+Routes visual display to stderr and emits a line-delimited JSON event stream to stdout. Useful for programmatic consumption — pipe the result into another tool while still watching progress in the terminal.
+
+**Event types:**
+
+| `type` | Fields | Description |
+|--------|--------|-------------|
+| `text` | `content` | Incremental text from Claude's response |
+| `tool_call` | `tool`, `input` | A tool invocation with its full input |
+| `tool_result` | `tool`, `summary` | Tool execution result summary |
+| `result` | `cost`, `duration_ms`, `turns`, `is_error` | Session completion metadata |
+
+**Examples:**
+
+```bash
+# Watch progress live, capture only the response text
+claude-print --stream-json "Summarize this repo" \
+  | jq -r 'select(.type=="text") | .content' \
+  | tee summary.txt
+
+# Capture full JSON stream to a file while watching progress
+claude-print --stream-json "What is 2+2?" > events.jsonl
+
+# Suppress display output entirely, process JSON only
+claude-print --stream-json "Generate a haiku" 2>/dev/null \
+  | jq -r 'select(.type=="text") | .content'
+
+# Show only tool calls made during execution
+claude-print --stream-json "Refactor main.go" 2>/dev/null \
+  | jq 'select(.type=="tool_call") | {tool, input}'
+```
+
+**Sample output** (stdout with `--stream-json`):
+```json
+{"type":"text","content":"I'll analyze the "}
+{"type":"text","content":"codebase structure..."}
+{"type":"tool_call","tool":"Glob","input":{"pattern":"**/*.go"}}
+{"type":"tool_result","tool":"Glob","summary":"Found 12 files"}
+{"type":"text","content":"Found 12 Go files organized as follows..."}
+{"type":"result","cost":0.0042,"duration_ms":3821,"turns":2}
 ```
 
 ## Requirements

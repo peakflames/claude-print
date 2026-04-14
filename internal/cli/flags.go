@@ -24,6 +24,7 @@ type Flags struct {
 	Quiet      bool
 	NoColor    bool
 	NoEmoji    bool
+	StreamJSON bool // --stream-json: emit structured JSON to stdout
 	ConfigPath string
 	DebugLog   string // --debug-log <dir> (log raw JSON to directory)
 	ShowHelp   bool
@@ -73,6 +74,8 @@ func ParseFlags() (Flags, error) {
 			f.NoColor = true
 		case "--no-emoji":
 			f.NoEmoji = true
+		case "--stream-json":
+			f.StreamJSON = true
 		case "--config":
 			if i+1 < len(args) {
 				f.ConfigPath = args[i+1]

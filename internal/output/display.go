@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -54,10 +55,11 @@ type DisplayState struct {
 
 // Display handles event display with configurable verbosity and formatting.
 type Display struct {
-	Formatter *Formatter
-	Verbosity Verbosity
-	Writer    io.Writer
-	State     *DisplayState
+	Formatter  *Formatter
+	Verbosity  Verbosity
+	Writer     io.Writer
+	State      *DisplayState
+	JSONWriter io.Writer // When non-nil, emits structured JSON events (one per line) for programatic consummption
 }
 
 // NewDisplay creates a new Display with the specified settings.
@@ -82,8 +84,10 @@ func (d *Display) SetUserPrompt(prompt string) {
 }
 
 // HandleEvent processes an event and outputs appropriate display text
-// based on the current verbosity level.
+// based on the current verbosity level. If JSONWriter is set, a structured
+// JSON event is also emitted before the display handler runs.
 func (d *Display) HandleEvent(event events.Event) {
+	d.emitJSONForEvent(event)
 	switch d.Verbosity {
 	case VerbosityQuiet:
 		d.handleQuietEvent(event)
@@ -91,6 +95,69 @@ func (d *Display) HandleEvent(event events.Event) {
 		d.handleNormalEvent(event)
 	case VerbosityVerbose:
 		d.handleVerboseEvent(event)
+	}
+}
+
+// emitJSON marshals v as a single JSON line to JSONWriter.
+func (d *Display) emitJSON(v interface{}) {
+	if d.JSONWriter == nil {
+		return
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	fmt.Fprintln(d.JSONWriter, string(data))
+}
+
+// emitJSONForEvent emits a structured JSON event to JSONWriter when set.
+// Must be called before verbosity handlers so PendingTools is still populated
+// (tool result lookup happens here before showToolResult deletes the entry).
+func (d *Display) emitJSONForEvent(event events.Event) {
+	if d.JSONWriter == nil {
+		return
+	}
+	switch e := event.(type) {
+	case events.StreamEvent:
+		if e.Event.Type == "content_block_delta" && e.Event.Delta != nil && e.Event.Delta.Text != "" {
+			d.emitJSON(struct {
+				Type    string `json:"type"`
+				Content string `json:"content"`
+			}{Type: "text", Content: e.Event.Delta.Text})
+		}
+	case events.AssistantEvent:
+		for _, block := range e.Message.Content {
+			if block.Type == "tool_use" {
+				d.emitJSON(struct {
+					Type  string                 `json:"type"`
+					Tool  string                 `json:"tool"`
+					Input map[string]interface{} `json:"input"`
+				}{Type: "tool_call", Tool: block.Name, Input: block.Input})
+			}
+		}
+	case events.UserEvent:
+		for _, block := range e.Message.Content {
+			if block.Type == "tool_result" {
+				toolName := ""
+				if pending, ok := d.State.PendingTools[block.ToolUseID]; ok {
+					toolName = pending.Name
+				}
+				summary := d.formatToolResult(toolName, e.ToolUseResult, block.ContentString)
+				d.emitJSON(struct {
+					Type    string `json:"type"`
+					Tool    string `json:"tool"`
+					Summary string `json:"summary"`
+				}{Type: "tool_result", Tool: toolName, Summary: summary})
+			}
+		}
+	case events.ResultEvent:
+		d.emitJSON(struct {
+			Type       string  `json:"type"`
+			Cost       float64 `json:"cost,omitempty"`
+			DurationMS int64   `json:"duration_ms,omitempty"`
+			Turns      int     `json:"turns,omitempty"`
+			IsError    bool    `json:"is_error,omitempty"`
+		}{Type: "result", Cost: e.TotalCostUSD, DurationMS: e.DurationMS, Turns: e.NumTurns, IsError: e.IsError})
 	}
 }
 

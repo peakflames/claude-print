@@ -34,6 +34,7 @@ func printUsage(ver string) {
 	fmt.Println("        --quiet      Enable minimal output (results only)")
 	fmt.Println("        --no-color   Disable colored output")
 	fmt.Println("        --no-emoji   Disable emoji in output")
+	fmt.Println("        --stream-json  Emit structured JSON events to stdout (display stays on stderr)")
 	fmt.Println("        --config     Path to config file (default: ~/.claude-print-config.json)")
 	fmt.Println("        --debug-log  Log raw JSON stream to directory")
 	fmt.Println()
@@ -96,8 +97,8 @@ func run() int {
 		return 0
 	}
 
-	// Ensure we always end with a newline
-	defer fmt.Println()
+	// Ensure we always end with a newline on stderr (display output destination)
+	defer fmt.Fprintln(os.Stderr)
 
 	// Load config (returns default if file doesn't exist)
 	cfg, err := config.LoadConfig()
@@ -126,6 +127,10 @@ func run() int {
 	}
 
 	display := output.NewDisplay(formatter, verbosity)
+
+	if flags.StreamJSON {
+		display.JSONWriter = os.Stdout
+	}
 
 	// Auto-detect Claude path if not configured
 	claudePath := cfg.ClaudePath
