@@ -25,18 +25,23 @@ func IsStdoutTTY() bool {
 	return IsTTY(os.Stdout)
 }
 
+// IsStderrTTY checks if stderr is a terminal.
+func IsStderrTTY() bool {
+	return IsTTY(os.Stderr)
+}
+
 // ShouldEnableColor determines if colors should be enabled based on:
 // 1. Explicit user flag (noColorFlag) - if true, colors are disabled
 // 2. NO_COLOR environment variable - if set, colors are disabled (https://no-color.org/)
 // 3. Config file setting (configColorEnabled) - user preference from config
-// 4. TTY detection - if not a TTY, colors are disabled by default
+// 4. TTY detection on displayFile - if not a TTY, colors are disabled by default
 //
 // The priority is:
 // - If noColorFlag is true, return false (user explicitly disabled)
 // - If NO_COLOR env var is set, return false (respect convention)
-// - If stdout is not a TTY, return false (pipe/redirect scenario)
+// - If displayFile is not a TTY (piped/redirected), return false
 // - Otherwise, return configColorEnabled (respect config file setting)
-func ShouldEnableColor(noColorFlag bool, configColorEnabled bool) bool {
+func ShouldEnableColor(noColorFlag bool, configColorEnabled bool, displayFile *os.File) bool {
 	// Explicit --no-color flag takes highest priority
 	if noColorFlag {
 		return false
@@ -47,8 +52,8 @@ func ShouldEnableColor(noColorFlag bool, configColorEnabled bool) bool {
 		return false
 	}
 
-	// If stdout is not a TTY (piped/redirected), disable colors
-	if !IsStdoutTTY() {
+	// If the display file is not a TTY (piped/redirected), disable colors
+	if !IsTTY(displayFile) {
 		return false
 	}
 

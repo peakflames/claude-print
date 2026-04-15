@@ -28,14 +28,15 @@ func printUsage(ver string) {
 	fmt.Println("           This ensures flags like --permission-mode correctly receive their arguments.")
 	fmt.Println()
 	fmt.Println("PROXY FLAGS (consumed by claude-print):")
-	fmt.Println("    -v, --version    Print version and exit")
-	fmt.Println("    -h, --help       Show this help")
-	fmt.Println("        --verbose    Enable detailed output (also passed to Claude)")
-	fmt.Println("        --quiet      Enable minimal output (results only)")
-	fmt.Println("        --no-color   Disable colored output")
-	fmt.Println("        --no-emoji   Disable emoji in output")
-	fmt.Println("        --config     Path to config file (default: ~/.claude-print-config.json)")
-	fmt.Println("        --debug-log  Log raw JSON stream to directory")
+	fmt.Println("    -v, --version      Print version and exit")
+	fmt.Println("    -h, --help         Show this help")
+	fmt.Println("        --verbose      Enable detailed output (also passed to Claude)")
+	fmt.Println("        --quiet        Enable minimal output (results only)")
+	fmt.Println("        --no-color     Disable colored output")
+	fmt.Println("        --no-emoji     Disable emoji in output")
+	fmt.Println("        --stream-json  Write structured JSON events to stdout; display goes to stderr")
+	fmt.Println("        --config       Path to config file (default: ~/.claude-print-config.json)")
+	fmt.Println("        --debug-log    Log raw JSON stream to directory")
 	fmt.Println()
 	fmt.Println("All other flags are passed through to Claude CLI unchanged.")
 	fmt.Println()
@@ -43,6 +44,14 @@ func printUsage(ver string) {
 	fmt.Println("    claude-print \"What is 2+2?\"")
 	fmt.Println("    claude-print --verbose \"Explain this code\"")
 	fmt.Println("    claude-print --quiet \"Generate a haiku\"")
+	fmt.Println()
+	fmt.Println("    # Read prompt from stdin:")
+	fmt.Println("    echo \"What is 2+2?\" | claude-print")
+	fmt.Println("    cat prompt.txt | claude-print --quiet")
+	fmt.Println()
+	fmt.Println("    # Stream structured JSON events to stdout (display goes to stderr):")
+	fmt.Println("    claude-print --stream-json \"Summarize this\" | jq .")
+	fmt.Println("    echo \"large prompt\" | claude-print --stream-json | post-processing-tool")
 	fmt.Println()
 	fmt.Println("    # Pass Claude CLI flags through (prompt MUST come before flags with values):")
 	fmt.Println("    claude-print \"Design a feature\" --permission-mode plan")
@@ -96,8 +105,14 @@ func run() int {
 		return 0
 	}
 
-	// Ensure we always end with a newline
-	defer fmt.Println()
+	// Determine where display output goes: stderr when --stream-json, stdout otherwise.
+	displayFile := os.Stdout
+	if flags.StreamJSON {
+		displayFile = os.Stderr
+	}
+
+	// Ensure we always end with a newline on the display stream
+	defer fmt.Fprintln(displayFile)
 
 	// Load config (returns default if file doesn't exist)
 	cfg, err := config.LoadConfig()
@@ -107,11 +122,11 @@ func run() int {
 	}
 
 	// Determine color and emoji settings
-	colorEnabled := output.ShouldEnableColor(flags.NoColor, cfg.ColorEnabled)
+	colorEnabled := output.ShouldEnableColor(flags.NoColor, cfg.ColorEnabled, displayFile)
 	emojiEnabled := cfg.EmojiEnabled && !flags.NoEmoji
 
-	// Create formatter and display
-	formatter := output.NewFormatter(colorEnabled, emojiEnabled, nil)
+	// Create formatter directed at the display file
+	formatter := output.NewFormatter(colorEnabled, emojiEnabled, displayFile)
 
 	// Determine verbosity level
 	verbosity := output.VerbosityNormal
@@ -126,6 +141,13 @@ func run() int {
 	}
 
 	display := output.NewDisplay(formatter, verbosity)
+	if flags.StreamJSON {
+		display.JSONWriter = os.Stdout
+	}
+
+	if flags.StreamJSON {
+		display.JSONWriter = os.Stdout
+	}
 
 	// Auto-detect Claude path if not configured
 	claudePath := cfg.ClaudePath
