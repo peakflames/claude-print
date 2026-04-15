@@ -9,6 +9,7 @@ A cross-platform CLI wrapper for Claude CLI that provides real-time progress fee
 - Real-time progress updates showing what Claude is doing
 - Colored, formatted output
 - Three verbosity levels: quiet, normal, and verbose
+- Structured JSON output mode (`--stream-json`) for programmatic consumption
 - Automatic TTY detection for script-friendly output
 - Cross-platform support (Windows, macOS, Linux)
 - Graceful shutdown on Ctrl+C
@@ -82,6 +83,14 @@ claude-print "Quick task" --max-turns 5
 
 # Continue previous session
 claude-print --continue
+
+# Read prompt from stdin
+echo "What is 2+2?" | claude-print
+cat prompt.txt | claude-print --quiet
+
+# Stream structured JSON events (display goes to stderr, JSON to stdout)
+claude-print --stream-json "Summarize this" | jq .
+echo "large prompt" | claude-print --stream-json | post-processing-tool
 ```
 
 ### Headless Automation
@@ -101,6 +110,7 @@ The `examples/` directory contains real-world automation patterns:
 | `--verbose` | Enable detailed output |
 | `--quiet` | Minimal output (errors and results only) |
 | `--no-color` | Disable colored output |
+| `--stream-json` | Write structured JSON events to stdout; display goes to stderr |
 | `--config` | Path to config file (default: `~/.claude-print-config.json`) |
 | `--debug-log` | Log raw JSON stream to directory |
 
@@ -180,6 +190,32 @@ Starting...
 Hello! I've completed the task.
 Done
 ```
+
+### Stream JSON Mode (`--stream-json`)
+
+Routes visual progress output to **stderr** and emits newline-delimited JSON
+events to **stdout**. Ideal for piping into downstream tools while still seeing
+human-readable progress.
+
+```bash
+# Visual progress on stderr, structured JSON on stdout
+claude-print --stream-json "Refactor main.go" 2>progress.log | jq .
+
+# Combine with stdin prompt for fully scriptable pipelines
+echo "Summarize this file" | claude-print --stream-json 2>/dev/null | jq -r 'select(.type=="text") | .content'
+```
+
+**JSON event schema:**
+
+| Event | Fields |
+|-------|--------|
+| Text chunk | `{"type":"text","content":"..."}` |
+| Tool call | `{"type":"tool_call","tool":"Read","input":{...}}` |
+| Tool result | `{"type":"tool_result","tool":"Read","summary":"Read 15 lines"}` |
+| Session end | `{"type":"result","cost":0.002,"duration_ms":3210,"turns":2,"is_error":false}` |
+
+Each line is a complete JSON object. Events are emitted in real-time as Claude
+runs, so consumers can process them incrementally.
 
 ## Requirements
 

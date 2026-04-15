@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/peakflames/claude-print/internal/cli"
 )
@@ -51,6 +52,11 @@ func RunClaude(opts RunOptions) (*ClaudeProcess, error) {
 	// Capture stderr to a buffer for error context
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
+
+	// Pass prompt via stdin to avoid Windows command-line length limits
+	if opts.Prompt != "" {
+		cmd.Stdin = strings.NewReader(opts.Prompt)
+	}
 
 	// Start the process
 	if err := cmd.Start(); err != nil {
@@ -126,9 +132,11 @@ func buildArgs(opts RunOptions) []string {
 	// Append all passthrough args from user
 	args = append(args, opts.PassthroughArgs...)
 
-	// Prompt comes last via -p flag
+	// Prompt is delivered via stdin to avoid OS command-line length limits.
+	// The -p flag puts claude in non-interactive mode; the actual content is
+	// written to the process's stdin in RunClaude.
 	if opts.Prompt != "" {
-		args = append(args, "-p", opts.Prompt)
+		args = append(args, "-p")
 	}
 
 	return args

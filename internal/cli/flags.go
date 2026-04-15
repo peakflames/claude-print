@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -9,8 +10,8 @@ import (
 // protectedFlags are flags that claude-print uses internally and cannot be
 // passed through to Claude CLI. The map value explains why each is blocked.
 var protectedFlags = map[string]string{
-	"-p":                         "prompt is passed as the first positional argument",
-	"--print":                    "prompt is passed as the first positional argument",
+	"-p":                         "prompt is passed as the first positional argument or read from stdin",
+	"--print":                    "prompt is passed as the first positional argument or read from stdin",
 	"--output-format":            "claude-print requires stream-json format",
 	"--include-partial-messages": "claude-print requires partial messages",
 }
@@ -23,12 +24,13 @@ type Flags struct {
 	Quiet      bool
 	NoColor    bool
 	NoEmoji    bool
+	StreamJSON bool // --stream-json: display→stderr, JSON events→stdout
 	ConfigPath string
 	DebugLog   string // --debug-log <dir> (log raw JSON to directory)
 	ShowHelp   bool
 
 	// Positional and passthrough
-	Prompt          string   // First positional argument (the prompt for Claude)
+	Prompt          string   // First positional argument (the prompt for Claude) or stdin
 	PassthroughArgs []string // All other args passed to Claude unchanged
 }
 
@@ -72,6 +74,8 @@ func ParseFlags() (Flags, error) {
 			f.NoColor = true
 		case "--no-emoji":
 			f.NoEmoji = true
+		case "--stream-json":
+			f.StreamJSON = true
 		case "--config":
 			if i+1 < len(args) {
 				f.ConfigPath = args[i+1]
@@ -108,6 +112,19 @@ func ParseFlags() (Flags, error) {
 	}
 
 	f.PassthroughArgs = passthrough
+
+	// If no prompt was given as a positional argument, check for piped stdin.
+	if f.Prompt == "" {
+		stat, err := os.Stdin.Stat()
+		if err == nil && (stat.Mode()&os.ModeCharDevice) == 0 {
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return Flags{}, fmt.Errorf("failed to read prompt from stdin: %w", err)
+			}
+			f.Prompt = strings.TrimRight(string(data), "\n")
+		}
+	}
+
 	return f, nil
 }
 

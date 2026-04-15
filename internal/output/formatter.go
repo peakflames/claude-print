@@ -25,10 +25,10 @@ type Formatter struct {
 }
 
 // NewFormatter creates a new Formatter with the specified settings.
-// If writer is nil, it defaults to os.Stdout.
+// If writer is nil, it defaults to os.Stderr (display output is separate from data output).
 func NewFormatter(colorEnabled, emojiEnabled bool, writer io.Writer) *Formatter {
 	if writer == nil {
-		writer = os.Stdout
+		writer = os.Stderr
 	}
 	return &Formatter{
 		ColorEnabled: colorEnabled,
